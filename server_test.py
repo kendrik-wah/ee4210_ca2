@@ -2,8 +2,9 @@ from socket import *
 
 protocol = 0
 timeout = 30
-hostname = gethostname()
-port = 65430
+hostname = "127.0.0.1"
+port = 8000
+ret_msg = "Hello, client!".encode()
 
 def make_socket(protocol, timeout):
 
@@ -38,14 +39,18 @@ def echo_socket(socket):
 	print('Thank you for connecting')
 
 	with conn:
-		while True:
-			data = conn.recv(1024)
+
+		data = True
+		while data:
+			data = conn.recv(1024).split()
 			if not data:
 				break
+			else: 
+				print("Acquired data: ", data)
+				conn.sendall(ret_msg)
+				print("Sent message: ", ret_msg)
 
-			print(data)
-			conn.sendall(data)
-
+		print("Disconnected.")
 		conn.close()
 
 test = make_socket(protocol, timeout)
