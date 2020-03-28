@@ -5,9 +5,9 @@
 	"timeout": 20,
 	"max_size": 1024,
 	"queue_size": 5,
-	"file_a": "GET /a.jpg HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nConnection: keep-alive\r\n\n",
-	"file_b": "GET /b.mp3 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nConnection: keep-alive\r\n\n",
-	"file_c": "GET /c.txt HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nConnection: keep-alive\r\n\n",
+	"file_a": "GET /a.jpg HTTP/1.1\r\nHost: 127.0.0.1:8000\r\nConnection: keep-alive\r\n\n",
+	"file_b": "GET /b.mp3 HTTP/1.1\r\nHost: 127.0.0.1:8000\r\nConnection: keep-alive\r\n\n",
+	"file_c": "GET /c.txt HTTP/1.1\r\nHost: 127.0.0.1:8000\r\nConnection: keep-alive\r\n\n",
 	"persistent": "keep-alive",
 	"non_persistent": "close"
 }
