@@ -1,6 +1,7 @@
 import http.server
 import socket
 import json
+import sys
 
 with open('locn.json', 'r') as j:
 	parsed_json = json.loads(j.read())
@@ -14,64 +15,118 @@ QUEUE_SIZE = parsed_json["queue_size"]
 PERSISTENT = parsed_json["persistent"]
 NON_PERSISTENT = parsed_json["non_persistent"]
 
-'''
-[b'GET', b'/a.jpg', b'HTTP/1.1', b'Host:', b'127.0.0.1:8080', b'Connection:', b'keep-alive']
-'''
+def handle_persistent(conn, data, filename):
 
-def handle_file(filename, connection, conn_type):
-	if conn_type == PERSISTENT:
-		handle_persistent(filename, connection)	
-	elif conn_type == NON_PERSISTENT:
-		handle_non_persistent(filename, connection)
+	while data:
+	send_file(conn, data)
+	print("[server]: {} sent. closing file.".format(filename.decode()))
+	data = receive_data(conn)
 
-def handle_request(connection):
-
-	try:
-		data = connection.recv(MAX_SIZE).split()
-	except:
-		raise Exception("data extraction failed!")
-
-	filename = data[1][1:]
-	conn_type = data[6]
-
-	handle_file(filename, connection, conn_type)
+	conn.close()
+	conn = None
 
 
 
-	print(data)
-	if not data:
-		return False
-	return True
+def handle_non_persistent(conn, data, filename):
 
-def setupServer(hostname, port):
+	send_file(conn, data)
+	print("[server]: {} sent. closing file and shutting down connection.".format(filename.decode()))
+	conn.close()
+	conn = None
+
+
+
+def setup_server(hostname, port):
 
 	try:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, PROTOCOL) # TCP connection
-	except:
-		raise Exception("socket setup has failed!")
+	except socket.error:
+		print("[server]: socket setup has failed.")
+		sys.exit(1)
 
-	print(sock)
 	sock.settimeout(TIMEOUT)
+	print("[server]: socket created. timeout is set at {} seconds.".format(TIMEOUT))
 	sock.bind((hostname, port))
-	return sock
-
-def serveForever(sock):
+	print("[server]: socket created in server at {} and {}.".format(HOSTNAME, PORT))
 
 	try:
 		sock.listen(QUEUE_SIZE)
-	except:
-		raise Exception("socket listen has failed!")
+	except socket.error:
+		print("[server]: setting up socket queue failed.")
+		sys.exit(1)
 
-	conn, acc = sock.accept()
-	print(sock)
-	data = True
-	while data:
-		data = handle_request(conn)
-		if not data:
+	return sock
+
+
+
+def create_conn(sock):
+
+	try:
+		conn, acc = sock.accept()
+	except socket.timeout:
+		print("[server]: no connections established after {} seconds. terminating connection.".format(TIMEOUT))
+		sys.exit(1)
+
+	if (conn.fileno() < 0):
+		print("[server]: no connections established. terminating server.")
+		sys.exit(1)
+
+	print("[server]: client found at {}".format(acc))
+	return conn
+
+
+def send_data(sock, data):
+
+	try:
+		sock.send(data)
+	except socket.error:
+		print("[server]: error sending data.")
+		sys.exit(1)
+
+
+
+def receive_data(sock):
+
+	try:
+		data = sock.recv(MAX_SIZE)
+	except socket.error:
+		print("[server]: error receiving data.")
+		sys.exit(1)
+	return data
+
+
+
+def send_file(sock, data):
+
+	file = open(data[1][1:], 'rb')
+	
+	while True:
+		line = file.read(MAX_SIZE)
+		if not line:
 			break
 
-	conn.close()
+		send_data(sock, line)
+
+	file.close()
+
+
 
 if __name__ == "__main__":
-	sock = setupServer(HOSTNAME, PORT)
-	serveForever(sock)
+
+	sock = setup_server(HOSTNAME, PORT)
+	conn = create_conn(sock)
+
+	while True:
+		data = receive_data(conn)
+		print('\n')
+		data = data.split()
+		filename = data[1][1:]
+		conn_type = data[6]
+
+		if conn_type == NON_PERSISTENT.encode():
+			handle_non_persistent(conn, data, filename)
+			conn = create_conn(sock)
+
+		elif (conn_type == PERSISTENT.encode()):
+			handle_persistent(conn, data, filename)
+			break
