@@ -1,5 +1,7 @@
 import socket
 import json
+import sys
+import os
 
 with open('locn.json', 'r') as j:
 	parsed_json = json.loads(j.read())
@@ -19,46 +21,74 @@ files = [FILE_A, FILE_B, FILE_C]
 def make_socket():
 	sock = socket.socket()
 	sock.settimeout(TIMEOUT)
+	print("[client]: socket created. timeout is set at {} seconds.".format(TIMEOUT))
 	return sock
 
 
 
 def connect(hostname, port):
+
 	try:
 		sock.connect((hostname,port))
-	except ConnectionRefusedError:
+	except socket.error:
 		print("[client]: connection has been refused. check the server.")
-		raise ConnectionRefusedError
-	except:
-		print("[client]: client connection failed.")
-		raise Exception
+		sys.exit(1)
+
+	print("[client]: socket is requesting from a server at {} and {}.".format(hostname, port))
 
 
 
-def send_message(msg, filename):
+def send_data(sock, msg):
+
 	try:
-		print(msg)
 		sock.sendall(msg.encode())
-	except:
+	except socket.error:
 		print("[client]: send message failed.\n")
-		raise Exception
+		sys.exit(1)
 
-	print("[client]: send message completed.")
+
+
+def receive_data(sock):
+
+	try:
+		data = sock.recv(MAX_SIZE)
+	except socket.error:
+		print("[client]: error in receiving data.")
+		sys.exit(1)
+
+	return data
+
+
+
+def retrieve_file(sock, raw_filename, extension):
+
+	filename='retrieve_non_persistent_' + raw_filename + extension
+	print("[client]: will write to {}.".format(filename))
+	file = open(filename, 'wb+')
+	print("[client]: {} created.".format(filename))
+
 	datum = True
-	data = []
-	
 	while datum:
-		datum = sock.recv(MAX_SIZE)
-		if not datum:
+		datum = receive_data(sock)
+		if datum == 'fin'.encode() or not datum:
+			print('[client]: empty line received. ending file retrieval from server.')
 			break
-		else:
-			data.append(datum)
 
-	print('[client]: request completed.')
-	print(data)
+		file.write(datum)
+		send_data(sock, 'ack')
+	file.close()
+	print("[client]: finished writing to {}. file closed.".format(filename))
 
-	print("[client]: {} has been received, now closing client socket.\n".format(filename))
-	sock.close()
+
+
+def send_message(sock, msg, filename):
+
+	raw_filename, file_ext = os.path.splitext(filename)
+
+	send_data(sock, msg)
+	print("[client]: request has been sent.")
+	retrieve_file(sock, raw_filename, file_ext)
+	print("[client]: {} has been received, now closing client socket.".format(filename))
 
 
 
@@ -67,9 +97,11 @@ if __name__ == "__main__":
 	for file in files:
 
 		filename = file.split()[1][1:]
+		print("[client]: requesting for {}.".format(filename))
 
-		sock = socket.socket()
-		print("[client]: socket created. timeout is set at {} seconds.".format(TIMEOUT))
+		sock = make_socket()
 		connect(HOSTNAME, PORT)
-		print("[client]: socket connected to and will request files from a server at {} and {}.".format(HOSTNAME, PORT))
-		send_message(file, filename)
+		send_message(sock, file, filename)
+		sock.close()
+		print("[client]: socket has been closed. field descriptor is {}.\n".format(sock.fileno()))
+		sock = None

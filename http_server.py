@@ -17,13 +17,8 @@ NON_PERSISTENT = parsed_json["non_persistent"]
 
 def handle_persistent(conn, data, filename):
 
-	while data:
 	send_file(conn, data)
 	print("[server]: {} sent. closing file.".format(filename.decode()))
-	data = receive_data(conn)
-
-	conn.close()
-	conn = None
 
 
 
@@ -32,6 +27,7 @@ def handle_non_persistent(conn, data, filename):
 	send_file(conn, data)
 	print("[server]: {} sent. closing file and shutting down connection.".format(filename.decode()))
 	conn.close()
+	print("[server]: socket has been closed. field descriptor is {}.\n".format(sock.fileno()))
 	conn = None
 
 
@@ -78,7 +74,7 @@ def create_conn(sock):
 def send_data(sock, data):
 
 	try:
-		sock.send(data)
+		sock.sendall(data)
 	except socket.error:
 		print("[server]: error sending data.")
 		sys.exit(1)
@@ -103,9 +99,15 @@ def send_file(sock, data):
 	while True:
 		line = file.read(MAX_SIZE)
 		if not line:
+			print('[server]: sending fin to client.')
+			send_data(sock, 'fin'.encode())
 			break
 
 		send_data(sock, line)
+		ack = receive_data(sock)
+		if not ack == 'ack'.encode():
+			print('[server]: ack not received, end file sending.')
+			break
 
 	file.close()
 
@@ -117,16 +119,28 @@ if __name__ == "__main__":
 	conn = create_conn(sock)
 
 	while True:
+		print('[server]: receiving request from client now, field descriptor at {}.'.format(conn.fileno()))
 		data = receive_data(conn)
-		print('\n')
-		data = data.split()
-		filename = data[1][1:]
-		conn_type = data[6]
 
-		if conn_type == NON_PERSISTENT.encode():
-			handle_non_persistent(conn, data, filename)
-			conn = create_conn(sock)
+		if data:
+			print('\n[server]: request obtained - {}'.format(data.decode()))
+			data = data.split()
+			filename = data[1][1:]
+			conn_type = data[6]
 
-		elif (conn_type == PERSISTENT.encode()):
-			handle_persistent(conn, data, filename)
+			if conn_type == NON_PERSISTENT.encode():
+				handle_non_persistent(conn, data, filename)
+				conn = create_conn(sock)
+
+			elif (conn_type == PERSISTENT.encode()):
+				handle_persistent(conn, data, filename)
+
+		else:
+			print('[server]: no more requests from client.')
 			break
+
+	if conn.fileno() > 0:
+		print("[server]: all files requested, now closing socket.")
+		sock.close()
+		print("[server]: socket has been closed. field descriptor is {}.\n".format(sock.fileno()))
+		sock = None
