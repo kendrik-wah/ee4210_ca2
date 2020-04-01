@@ -1,4 +1,6 @@
 from socket import *
+import time
+import sys
 
 protocol = 0
 timeout = 30
@@ -7,8 +9,6 @@ port = 8000
 ret_msg = "Hello, client!".encode()
 
 def make_socket(protocol, timeout):
-
-	sock = 0
 
 	try:
 		sock = socket(AF_INET, SOCK_STREAM, protocol)
@@ -31,32 +31,39 @@ def echo_socket(socket):
 
 	try:
 		test = socket.listen()
-	except (test < 0):
-		raise Exception("listen error")
+	except socket.error:
+		print("[server]: listen error")
+		sys.exit(1)
 
-	conn, addr = socket.accept()
+	try:
+		conn, addr = socket.accept()
+	except socket.error:
+		print("[server]: accept error")
+		sys.exit(1)
+
 	print('Got connection from ', addr[0], '(', addr[1], ')')
-	print('Thank you for connecting')
+	try:
+		conn.sendall('Thank you for connecting'.encode())
+	except socket.error:
+		print("[server]: sending error")
+		sys.exit(1)
 
 	with conn:
-
 		data = True
 		while data:
-			data = conn.recv(1024).split()
+			data = conn.recv(1024)
 			if not data:
 				break
 			else: 
-				print("Acquired data: ", data)
+				print("Acquired data: ", data.decode())
 				conn.sendall(ret_msg)
-				print("Sent message: ", ret_msg)
+				print("Sent message: ", ret_msg.decode())
 
 		print("Disconnected.")
 		conn.close()
 
-test = make_socket(protocol, timeout)
-print(test)
+if __name__ == '__main__':
 
-test = bind_socket(test, hostname, port)
-print(test)
-
-echo_socket(test)
+	test = make_socket(protocol, timeout)
+	test = bind_socket(test, hostname, port)
+	echo_socket(test)

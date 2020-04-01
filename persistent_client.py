@@ -1,5 +1,6 @@
 import socket
 import json
+import datetime
 import sys
 import os
 
@@ -19,14 +20,21 @@ FILE_C = parsed_json["file_c_persistent"]
 files = [FILE_A, FILE_B, FILE_C]
 
 def make_socket():
-	sock = socket.socket()
-	sock.settimeout(TIMEOUT)
-	print("[client]: socket created. timeout is set at {} seconds.".format(TIMEOUT))
+
+	try:
+		sock = socket.socket()
+		sock.settimeout(TIMEOUT)
+	except socket.error:
+		print('[client]: socket creation has failed. closing the client')
+		sys.exit(1)
+
 	return sock
 
 
 
 def connect(hostname, port):
+
+	t1 = datetime.datetime.now()
 
 	try:
 		sock.connect((hostname,port))
@@ -34,7 +42,15 @@ def connect(hostname, port):
 		print("[client]: connection has been refused. check the server.")
 		sys.exit(1)
 
-	print("[client]: socket connected to and will request files from a server at {} and {}.\n".format(hostname, port))
+	send_data(sock, 'con'.encode())
+	data = receive_data(sock)
+
+	if data != 'con'.encode():
+		print('[client]: connection to server not acknowledged. shutting down client.')
+		sys.exit(1)
+
+	t2 = datetime.datetime.now()
+	return (t2-t1).total_seconds()
 
 
 
@@ -60,49 +76,75 @@ def receive_data(sock):
 
 
 
-def receive_file(sock, raw_filename, extension):
+def retrieve_file(sock, raw_filename, extension):
+
+	'''
+	This function call only works for a SINGLE file.
+
+	1) Create a file to write to.
+	2) while loop is running
+		a) receive data from the socket.
+			- if data == 'fin' or data is an empty string, the last bits of data have been transmitted.
+			  in this case, break the loop since there is no more data to be received.
+		b) write data to file.
+		c) record packet received. do not count 'fin' as a received packet.
+		d) send an acknowledge to the server, telling the server to continue sending the packet.
+	3) close the file to write to. good practice, might accidentally write mp3 files into txt and etc etc etc.
+	4) return the number of packets recorded for the file retrieved.
+	'''
 
 	filename='retrieve_persistent_' + raw_filename + extension
-	print("[client]: will write to {}.".format(filename))
 	file = open(filename, 'wb+')
-	print("[client]: {} created.".format(filename))
 
 	datum = True
+	count = 0
+
 	while datum:
+
 		datum = receive_data(sock)
 		if datum == 'fin'.encode() or not datum:
-			print('[client]: empty line received. ending file retrieval from server.')
+			# print('[client]: end of file acknowledged. ending file retrieval from server.')
 			break
 
 		file.write(datum)
+		count += 1
 		send_data(sock, 'ack'.encode())
 
 	file.close()
-	print("[client]: finished writing to {}. file closed.".format(filename))
-
-
-
-def request_client(sock):
-
-	for file in files:
-		filename = file.split()[1][1:]
-		raw_filename, file_ext = os.path.splitext(filename)
-		print("[client]: requesting for {}.".format(filename))
-
-		send_data(sock, file.encode())
-		print("[client]: request has been sent.")
-		receive_file(sock, raw_filename, file_ext)
-		print("[client]: received {}\n".format(filename))
-
-	print("[client]: all files retrieved, now closing socket.")
+	return count
 
 
 
 if __name__ == "__main__":
 
+	number_of_packets = 0
 	sock = make_socket()
-	connect(HOSTNAME, PORT)
-	request_client(sock)
+	t0 = connect(HOSTNAME, PORT)
+	total_time = t0
+
+	for file in files:
+
+		filename = file.split()[1][1:]
+		raw_filename, file_ext = os.path.splitext(filename)
+
+		t1 = datetime.datetime.now()
+		# print('[client]: current time is {}.'.format(t1)) # Record time before sending request.
+
+		send_data(sock, file.encode()) # Send file request to server.
+		pkt_rec = retrieve_file(sock, raw_filename, file_ext) # Retrieve file, record number of packets received from server.
+
+		t2 = datetime.datetime.now()
+		# print('[client]: current time is {}.'.format(t2)) # Record time after transaction.
+
+		time_diff = (t2-t1).total_seconds()
+		print('[client]: time difference is {} seconds.'.format(time_diff)) # Calculated time difference.
+		total_time += time_diff
+
+		print('[client]: number of packets received = {}\n'.format(pkt_rec)) # Find the number of packets received.
+		number_of_packets += pkt_rec
+
+	print('[client]: transaction time = {} seconds.'.format(total_time))
+	print('[client]: number_of_packets = {}'.format(number_of_packets))
+
 	sock.close()
-	print("[client]: socket has been closed. field descriptor is {}.\n".format(sock.fileno()))
 	sock = None

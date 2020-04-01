@@ -12,5 +12,6 @@
 	"file_b_non_persistent": "GET /b.mp3 HTTP/1.1\r\nHost: 127.0.0.1:8000\r\nConnection: close\r\n\n",
 	"file_c_non_persistent": "GET /c.txt HTTP/1.1\r\nHost: 127.0.0.1:8000\r\nConnection: close\r\n\n",
 	"persistent": "keep-alive",
-	"non_persistent": "close"
+	"non_persistent": "close",
+	"number_of_runs": 5
 }

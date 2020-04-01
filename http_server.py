@@ -1,7 +1,8 @@
-import http.server
 import socket
 import json
+import datetime
 import sys
+import os
 
 with open('locn.json', 'r') as j:
 	parsed_json = json.loads(j.read())
@@ -15,23 +16,6 @@ QUEUE_SIZE = parsed_json["queue_size"]
 PERSISTENT = parsed_json["persistent"]
 NON_PERSISTENT = parsed_json["non_persistent"]
 
-def handle_persistent(conn, data, filename):
-
-	send_file(conn, data)
-	print("[server]: {} sent. closing file.".format(filename.decode()))
-
-
-
-def handle_non_persistent(conn, data, filename):
-
-	send_file(conn, data)
-	print("[server]: {} sent. closing file and shutting down connection.".format(filename.decode()))
-	conn.close()
-	print("[server]: socket has been closed. field descriptor is {}.\n".format(sock.fileno()))
-	conn = None
-
-
-
 def setup_server(hostname, port):
 
 	try:
@@ -41,9 +25,7 @@ def setup_server(hostname, port):
 		sys.exit(1)
 
 	sock.settimeout(TIMEOUT)
-	print("[server]: socket created. timeout is set at {} seconds.".format(TIMEOUT))
 	sock.bind((hostname, port))
-	print("[server]: socket created in server at {} and {}.".format(HOSTNAME, PORT))
 
 	try:
 		sock.listen(QUEUE_SIZE)
@@ -67,7 +49,15 @@ def create_conn(sock):
 		print("[server]: no connections established. terminating server.")
 		sys.exit(1)
 
-	print("[server]: client found at {}".format(acc))
+	test = receive_data(conn)
+
+	if test != 'con'.encode():
+		print("[server]: acknowledge from client failed. shutting down server.")
+		sys.exit(1)
+
+	send_data(conn, 'con'.encode())
+	
+
 	return conn
 
 
@@ -94,12 +84,27 @@ def receive_data(sock):
 
 def send_file(sock, data):
 
+
+	'''
+	1) Open the file as given be data.
+	2) while loop is running:
+		a) line <- 1024 bytes worth of data from the file. 
+		b) if line is empty:
+			- send 'fin' to indicate end of file.
+			- break loop and end.
+		c) else, send the data.
+		d) receive ack from client.
+		e) if ack != 'ack', break the loop. 
+	3) close the file.
+	'''
+
 	file = open(data[1][1:], 'rb')
 	
 	while True:
+
 		line = file.read(MAX_SIZE)
 		if not line:
-			print('[server]: sending fin to client.')
+			print('[server]: reached end of file, sending fin to client.')
 			send_data(sock, 'fin'.encode())
 			break
 
@@ -129,11 +134,16 @@ if __name__ == "__main__":
 			conn_type = data[6]
 
 			if conn_type == NON_PERSISTENT.encode():
-				handle_non_persistent(conn, data, filename)
+
+				send_file(conn, data)
+				print("[server]: {} sent. closing file and shutting down connection.".format(filename.decode()))
+				conn.close()
+				print("[server]: socket has been closed. field descriptor is {}.\n".format(conn.fileno()))
+				conn = None
 				conn = create_conn(sock)
 
 			elif (conn_type == PERSISTENT.encode()):
-				handle_persistent(conn, data, filename)
+				send_file(conn, data)
 
 		else:
 			print('[server]: no more requests from client.')

@@ -12,8 +12,16 @@ def create_client():
 	return sock
 
 def connect(sock, host, port):
+
 	sock.connect((host, port))
-	data = sock.recv(16)
+	try:
+		data = sock.recv(1024)
+	except socket.error:
+		print('[client]: socket receive error')
+		sys.exit(1)
+
+	print(data)
+
 	return data
 
 def send_message(sock, message):
@@ -24,8 +32,6 @@ def send_message(sock, message):
 
 test = create_client()
 data = connect(test, hostname, port)
-
-# print("the socket has successfully connected to google on port == %s" %(hostname))
 data = send_message(test, message)
 
 print(data)
