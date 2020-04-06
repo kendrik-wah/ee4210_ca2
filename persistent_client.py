@@ -16,8 +16,12 @@ QUEUE_SIZE = parsed_json["queue_size"]
 FILE_A = parsed_json["file_a_persistent"]
 FILE_B = parsed_json["file_b_persistent"]
 FILE_C = parsed_json["file_c_persistent"]
+EXPECTED_A = parsed_json["file_a_expected"]
+EXPECTED_B = parsed_json["file_b_expected"]
+EXPECTED_C = parsed_json["file_c_expected"]
 
 files = [FILE_A, FILE_B, FILE_C]
+file_sizes = {'a': EXPECTED_A, 'b': EXPECTED_B, 'c': EXPECTED_C}
 
 def make_socket():
 
@@ -42,14 +46,17 @@ def connect(hostname, port):
 		print("[client]: connection has been refused. check the server.")
 		sys.exit(1)
 
-	send_data(sock, 'con'.encode())
+	send_data(sock, 'SYN'.encode())
 	data = receive_data(sock)
 
-	if data != 'con'.encode():
+	if data != 'SYN_ACK'.encode():
 		print('[client]: connection to server not acknowledged. shutting down client.')
 		sys.exit(1)
 
 	t2 = datetime.datetime.now()
+
+	send_data(sock, 'ACK'.encode())
+
 	return (t2-t1).total_seconds()
 
 
@@ -59,7 +66,7 @@ def send_data(sock, msg):
 	try:
 		sock.sendall(msg)
 	except socket.error:
-		print("[client]: send message failed.")
+		print("[client]: send message failed.\n")
 		sys.exit(1)
 
 
@@ -73,6 +80,14 @@ def receive_data(sock):
 		sys.exit(1)
 
 	return data
+
+
+
+def check_pkts(raw_filename, pkt_rec):
+
+	if (file_sizes[raw_filename] != pkt_rec):
+		print('[client]: file transmission error. some packets were lost.')
+		sys.exit(1)
 
 
 
@@ -102,13 +117,13 @@ def retrieve_file(sock, raw_filename, extension):
 	while datum:
 
 		datum = receive_data(sock)
-		if datum == 'fin'.encode() or not datum:
+		if datum == 'FIN'.encode() or not datum:
 			# print('[client]: end of file acknowledged. ending file retrieval from server.')
 			break
 
 		file.write(datum)
 		count += 1
-		send_data(sock, 'ack'.encode())
+		send_data(sock, 'ACK'.encode())
 
 	file.close()
 	return count
@@ -119,25 +134,32 @@ if __name__ == "__main__":
 
 	number_of_packets = 0
 	sock = make_socket()
-	t0 = connect(HOSTNAME, PORT)
-	total_time = t0
+	total_time = connect(HOSTNAME, PORT) # account for connecting time.
+
+	print("[client]: t0 = {} seconds.\n".format(total_time))
 
 	for file in files:
 
 		filename = file.split()[1][1:]
 		raw_filename, file_ext = os.path.splitext(filename)
 
-		t1 = datetime.datetime.now()
-		# print('[client]: current time is {}.'.format(t1)) # Record time before sending request.
+		t1 = datetime.datetime.now() # Record time before sending request.
 
 		send_data(sock, file.encode()) # Send file request to server.
-		pkt_rec = retrieve_file(sock, raw_filename, file_ext) # Retrieve file, record number of packets received from server.
+		http_response = receive_data(sock)
 
-		t2 = datetime.datetime.now()
-		# print('[client]: current time is {}.'.format(t2)) # Record time after transaction.
+		t2 = datetime.datetime.now() # Record time after receiving response.
 
-		time_diff = (t2-t1).total_seconds()
-		print('[client]: time difference is {} seconds.'.format(time_diff)) # Calculated time difference.
+		if (http_response == 'Response 200'.encode()):
+			pkt_rec = retrieve_file(sock, raw_filename, file_ext)
+
+		check_pkts(raw_filename, pkt_rec) # ensure no file transmission error
+
+		t3 = datetime.datetime.now() # Record time after transaction.
+
+		time_diff = (t3-t1).total_seconds()
+		print('[client]: response time is {} seconds.'.format((t2-t1).total_seconds()))
+		print('[client]: time difference is {} seconds.'.format((t3-t2).total_seconds())) # Calculated time difference.
 		total_time += time_diff
 
 		print('[client]: number of packets received = {}\n'.format(pkt_rec)) # Find the number of packets received.
@@ -145,6 +167,11 @@ if __name__ == "__main__":
 
 	print('[client]: transaction time = {} seconds.'.format(total_time))
 	print('[client]: number_of_packets = {}'.format(number_of_packets))
+
+	send_data(sock, 'FIN'.encode())
+	fin_data = receive_data(sock)
+	if (fin_data == 'FIN_ACK'.encode()):
+		send_data(sock, 'ACK'.encode())
 
 	sock.close()
 	sock = None

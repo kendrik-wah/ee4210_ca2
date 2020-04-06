@@ -51,14 +51,20 @@ def create_conn(sock):
 
 	test = receive_data(conn)
 
-	if test != 'con'.encode():
+	if test != 'SYN'.encode():
 		print("[server]: acknowledge from client failed. shutting down server.")
 		sys.exit(1)
 
-	send_data(conn, 'con'.encode())
-	
+	send_data(conn, 'SYN_ACK'.encode())
+
+	test = receive_data(conn)
+
+	if test != 'ACK'.encode():
+		print("[server]: acknowledge from client failed. shutting down server.")
+		sys.exit(1)
 
 	return conn
+
 
 
 def send_data(sock, data):
@@ -78,14 +84,15 @@ def receive_data(sock):
 	except socket.error:
 		print("[server]: error receiving data.")
 		sys.exit(1)
+
 	return data
 
 
 
 def send_file(sock, data):
 
-
 	'''
+	0) Send Response 200 to client.
 	1) Open the file as given be data.
 	2) while loop is running:
 		a) line <- 1024 bytes worth of data from the file. 
@@ -98,6 +105,8 @@ def send_file(sock, data):
 	3) close the file.
 	'''
 
+	send_data(sock, "Response 200".encode())
+
 	file = open(data[1][1:], 'rb')
 	
 	while True:
@@ -105,12 +114,12 @@ def send_file(sock, data):
 		line = file.read(MAX_SIZE)
 		if not line:
 			print('[server]: reached end of file, sending fin to client.')
-			send_data(sock, 'fin'.encode())
+			send_data(sock, 'FIN'.encode())
 			break
 
 		send_data(sock, line)
 		ack = receive_data(sock)
-		if not ack == 'ack'.encode():
+		if not ack == 'ACK'.encode():
 			print('[server]: ack not received, end file sending.')
 			break
 
@@ -124,10 +133,10 @@ if __name__ == "__main__":
 	conn = create_conn(sock)
 
 	while True:
+		data = receive_data(conn)		
 		print('[server]: receiving request from client now, field descriptor at {}.'.format(conn.fileno()))
-		data = receive_data(conn)
-
-		if data:
+		
+		if data and data != 'FIN'.encode():
 			print('\n[server]: request obtained - {}'.format(data.decode()))
 			data = data.split()
 			filename = data[1][1:]
@@ -137,6 +146,7 @@ if __name__ == "__main__":
 
 				send_file(conn, data)
 				print("[server]: {} sent. closing file and shutting down connection.".format(filename.decode()))
+
 				conn.close()
 				print("[server]: socket has been closed. field descriptor is {}.\n".format(conn.fileno()))
 				conn = None
@@ -145,7 +155,10 @@ if __name__ == "__main__":
 			elif (conn_type == PERSISTENT.encode()):
 				send_file(conn, data)
 
-		else:
+		elif not data or data == 'FIN'.encode():
+			send_data(conn, 'FIN_ACK'.encode())
+			ack_data = receive_data(conn)
+			send_data(conn, 'ACK'.encode())
 			print('[server]: no more requests from client.')
 			break
 

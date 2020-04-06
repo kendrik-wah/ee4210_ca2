@@ -1,69 +1,99 @@
-from socket import *
-import time
+import socket
+import json
+import datetime
 import sys
+import os
 
 protocol = 0
-timeout = 30
+timeout = 10
 hostname = "127.0.0.1"
 port = 8000
-ret_msg = "Hello, client!".encode()
+ret_msg = "test".encode()
+MAX_SIZE = 1024
 
 def make_socket(protocol, timeout):
 
 	try:
-		sock = socket(AF_INET, SOCK_STREAM, protocol)
-		sock.settimeout(timeout)
-	except:
-		raise Exception("socket error has occurred")
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) # TCP connection
+	except socket.error:
+		print('[client]: socket creation has failed. closing the client')
+		sys.exit(1)
 
+	sock.bind((hostname, port))
+	sock.settimeout(10)
+		
 	return sock
 
-def bind_socket(sock, hostname, port):
+
+
+def create_conn(sock):
 
 	try:
-		sock.bind((hostname, port))
-	except:
-		raise Exception("error in binding hostname and port")
+		conn, acc = sock.accept()
+	except socket.timeout:
+		print("[server]: no connections established after {} seconds. terminating connection.".format(10))
+		sys.exit(1)
 
-	return sock
+	if (conn.fileno() < 0):
+		print("[server]: no connections established. terminating server.")
+		sys.exit(1)
 
-def echo_socket(socket):
+	test = receive_data(conn)
+
+	if test != 'con'.encode():
+		print("[server]: acknowledge from client failed. shutting down server.")
+		sys.exit(1)
+
+	send_data(conn, 'con'.encode())
+
+	test = receive_data(conn)
+
+	if test != 'ack'.encode():
+		print("[server]: acknowledge from client failed. shutting down server.")
+		sys.exit(1)
+
+	return conn
+
+
+
+def send_data(sock, msg):
 
 	try:
-		test = socket.listen()
+		sock.sendall(msg)
+	except socket.error:
+		print("[client]: send message failed.\n")
+		sys.exit(1)
+
+
+
+def receive_data(sock):
+
+	try:
+		data = sock.recv(MAX_SIZE)
+	except socket.error:
+		print("[client]: error in receiving data.")
+		sys.exit(1)
+
+	return data
+
+
+
+def listen_client(sock):
+
+	try:
+		test = sock.listen(5)
 	except socket.error:
 		print("[server]: listen error")
 		sys.exit(1)
 
-	try:
-		conn, addr = socket.accept()
-	except socket.error:
-		print("[server]: accept error")
-		sys.exit(1)
 
-	print('Got connection from ', addr[0], '(', addr[1], ')')
-	try:
-		conn.sendall('Thank you for connecting'.encode())
-	except socket.error:
-		print("[server]: sending error")
-		sys.exit(1)
-
-	with conn:
-		data = True
-		while data:
-			data = conn.recv(1024)
-			if not data:
-				break
-			else: 
-				print("Acquired data: ", data.decode())
-				conn.sendall(ret_msg)
-				print("Sent message: ", ret_msg.decode())
-
-		print("Disconnected.")
-		conn.close()
 
 if __name__ == '__main__':
 
-	test = make_socket(protocol, timeout)
-	test = bind_socket(test, hostname, port)
-	echo_socket(test)
+	sock = make_socket(protocol, timeout)
+	listen_client(sock)
+	conn = create_conn(sock)
+
+	new_data = receive_data(conn)
+	send_data(conn, 'ack'.encode())
+	
